@@ -1,0 +1,49 @@
+# .github/workflows/daily-form-automation.yml
+name: Automatización Formulario Diario
+
+on:
+  schedule:
+    # Ejecutar de Lunes a Viernes a las 9:00 AM Argentina (12:00 UTC)
+    # Si quieres cambiar el horario, modifica el primer número:
+    # 0 = 9:00 AM, 30 = 9:30 AM, etc.
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:  # Permite ejecutar manualmente desde GitHub
+
+jobs:
+  fill-form:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout código
+      uses: actions/checkout@v4
+      
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Instalar dependencias
+      run: |
+        pip install selenium requests
+        
+    - name: Configurar Chrome
+      uses: browser-actions/setup-chrome@latest
+      
+    - name: Configurar ChromeDriver
+      uses: nanasess/setup-chromedriver@v2
+        
+    - name: Ejecutar automatización
+      env:
+        FORM_URL: ${{ secrets.FORM_URL }}
+        EMAIL: ${{ secrets.EMAIL }}
+        NOMBRE: ${{ secrets.NOMBRE }}
+        DNI: ${{ secrets.DNI }}
+      run: python form_automation_github.py
+      
+    - name: Subir screenshots si hay error
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: error-screenshots
+        path: /tmp/form_*.png
+        retention-days: 5
