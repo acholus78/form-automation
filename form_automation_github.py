@@ -238,27 +238,44 @@ class GitHubFormAutomator:
                 try:
                     # Abrir dropdown
                     self.driver.execute_script("arguments[0].click();", dropdown)
-                    time.sleep(2) # Esperar a que las opciones se rendericen
+                    # Esperar un poco más para que las opciones se carguen completamente
+                    time.sleep(3) 
                     
                     self.take_screenshot("04_dropdown_opened")
                     
-                    # MODIFICACIÓN: Buscar opción de forma más robusta
                     option_found = False
-                    # Buscar todos los elementos que podrían ser opciones (div con role="option" es común en GForms)
-                    # También buscar span dentro de esos divs, o divs con texto directo
-                    possible_options = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_all_elements_located((By.XPATH, '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]'))
+                    # Buscar todos los elementos que podrían ser opciones de Google Forms
+                    # Esto incluye divs con role="option" y spans dentro de ellos
+                    # También se añade una espera para la visibilidad de al menos una opción
+                    WebDriverWait(self.driver, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]'))
                     )
+                    
+                    possible_options = self.driver.find_elements(By.XPATH, '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]')
                     
                     logging.info(f"🔍 Encontradas {len(possible_options)} posibles opciones en el dropdown.")
 
                     for option in possible_options:
                         try:
-                            # Obtener el texto visible del elemento, limpiando espacios
-                            option_text = option.text.strip()
+                            # Intentar obtener el texto de la opción.
+                            # Para Google Forms, el texto a menudo está en un span dentro del div[role="option"]
+                            option_text = ""
+                            if option.tag_name.lower() == 'span':
+                                option_text = option.text.strip()
+                            else: # Si es un div u otro elemento, buscar un span anidado
+                                try:
+                                    nested_span = option.find_element(By.TAG_NAME, 'span')
+                                    option_text = nested_span.text.strip()
+                                except:
+                                    option_text = option.text.strip() # Fallback si no hay span anidado
+
                             logging.info(f"   Comparando opción: '{option_text}' con '{self.nombre}'")
+                            
                             if option_text == self.nombre:
-                                # Asegurarse de que el elemento es cliqueable antes de hacer clic
+                                # Asegurarse de que el elemento es visible y cliqueable antes de hacer clic
+                                WebDriverWait(self.driver, 5).until(
+                                    EC.visibility_of(option)
+                                )
                                 WebDriverWait(self.driver, 5).until(
                                     EC.element_to_be_clickable(option)
                                 )
