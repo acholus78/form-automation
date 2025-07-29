@@ -8,6 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.keys import Keys # Importar Keys para simular teclas
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -204,7 +205,7 @@ class GitHubFormAutomator:
                 (By.XPATH, '//div[contains(@class, "dropdown") or contains(@class, "select")]'),
             ]
             
-            for i, (by, selector) in enumerate(dropdown_strategies, 1): # CORRECCIÓN: Añadido 'in enumerate(dropdown_strategies, 1)'
+            for i, (by, selector) in enumerate(dropdown_strategies, 1):
                 try:
                     logging.info(f"🔍 Estrategia dropdown {i}: {selector}")
                     dropdown = WebDriverWait(self.driver, 8).until(
@@ -244,60 +245,73 @@ class GitHubFormAutomator:
                     self.take_screenshot("04_dropdown_opened")
                     
                     option_found = False
-                    # Normalizar el nombre a buscar para comparación (solo para fallback de texto)
-                    target_name_normalized_for_text = self.nombre.strip().lower() 
                     
-                    # MODIFICACIÓN CLAVE: Buscar directamente la opción por su atributo data-value
-                    # Esto es lo más fiable para Google Forms. Usamos self.nombre.strip() para asegurar
-                    # que no haya espacios extra que impidan la coincidencia.
+                    # NUEVA ESTRATEGIA: Intentar enviar teclas al elemento del dropdown
+                    # Esto simula escribir en el campo de búsqueda del dropdown de Google Forms
                     try:
-                        logging.info(f"🔍 Intentando seleccionar por data-value: '{self.nombre.strip()}'")
-                        option_element = WebDriverWait(self.driver, 10).until(
-                            EC.element_to_be_clickable((By.XPATH, f'//div[@role="option" and @data-value="{self.nombre.strip()}"]'))
-                        )
-                        self.driver.execute_script("arguments[0].click();", option_element)
-                        logging.info(f"✅ Opción '{self.nombre}' seleccionada usando data-value.")
+                        logging.info(f"🔍 Intentando seleccionar la opción enviando teclas: '{self.nombre.strip()}'")
+                        # Enviar el nombre y luego la tecla ENTER
+                        dropdown.send_keys(self.nombre.strip())
+                        time.sleep(1) # Pequeña espera para que el formulario procese la entrada
+                        dropdown.send_keys(Keys.ENTER) # Simular Enter para seleccionar la opción
+                        logging.info(f"✅ Opción '{self.nombre}' seleccionada enviando teclas.")
                         option_found = True
                     except Exception as e:
-                        logging.info(f"❌ No se encontró la opción por data-value ('{self.nombre.strip()}'), intentando por texto visible. Error: {e}")
+                        logging.warning(f"⚠️ Falló la selección de opción enviando teclas. Error: {e}")
                         
-                        # Fallback a la búsqueda por texto visible si data-value falla
-                        # Esperar a que al menos una opción visible esté presente
-                        WebDriverWait(self.driver, 10).until(
-                            EC.visibility_of_element_located((By.XPATH, '//div[@role="option"]'))
-                        )
+                    if not option_found:
+                        # Si la estrategia de enviar teclas falla, volvemos a intentar por data-value y luego por texto visible
+                        # Normalizar el nombre a buscar para comparación (solo para fallback de texto)
+                        target_name_normalized_for_text = self.nombre.strip().lower() 
                         
-                        # MODIFICACIÓN: Buscar específicamente los spans dentro de los divs con role="option"
-                        # que son los que contienen el texto visible.
-                        possible_options_spans = self.driver.find_elements(By.XPATH, 
-                            '//div[@role="option"]//span'
-                        )
-                        
-                        logging.info(f"🔍 Encontradas {len(possible_options_spans)} posibles spans de opciones para búsqueda por texto.")
+                        # Intentar buscar directamente la opción por su atributo data-value
+                        try:
+                            logging.info(f"🔍 Fallback: Intentando seleccionar por data-value: '{self.nombre.strip()}'")
+                            option_element = WebDriverWait(self.driver, 10).until(
+                                EC.element_to_be_clickable((By.XPATH, f'//div[@role="option" and @data-value="{self.nombre.strip()}"]'))
+                            )
+                            self.driver.execute_script("arguments[0].click();", option_element)
+                            logging.info(f"✅ Fallback: Opción '{self.nombre}' seleccionada usando data-value.")
+                            option_found = True
+                        except Exception as e:
+                            logging.info(f"❌ Fallback: No se encontró la opción por data-value ('{self.nombre.strip()}'), intentando por texto visible. Error: {e}")
+                            
+                            # Fallback a la búsqueda por texto visible si data-value falla
+                            # Esperar a que al menos una opción visible esté presente
+                            WebDriverWait(self.driver, 10).until(
+                                EC.visibility_of_element_located((By.XPATH, '//div[@role="option"]'))
+                            )
+                            
+                            # Buscar específicamente los spans dentro de los divs con role="option"
+                            possible_options_spans = self.driver.find_elements(By.XPATH, 
+                                '//div[@role="option"]//span'
+                            )
+                            
+                            logging.info(f"🔍 Fallback: Encontradas {len(possible_options_spans)} posibles spans de opciones para búsqueda por texto.")
 
-                        for option_span in possible_options_spans:
-                            try:
-                                option_text = option_span.text.strip()
-                                option_text_normalized = option_text.lower()
+                            for option_span in possible_options_spans:
+                                try:
+                                    option_text = option_span.text.strip()
+                                    option_text_normalized = option_text.lower()
 
-                                logging.info(f"   Comparando opción extraída: '{option_text_normalized}' con '{target_name_normalized_for_text}'")
-                                
-                                if option_text_normalized == target_name_normalized_for_text:
-                                    # Asegurarse de que el elemento padre (div[role="option"]) es cliqueable
-                                    parent_div = option_span.find_element(By.XPATH, './ancestor::div[@role="option"][1]')
-                                    WebDriverWait(self.driver, 5).until(
-                                        EC.visibility_of(parent_div)
-                                    )
-                                    WebDriverWait(self.driver, 5).until(
-                                        EC.element_to_be_clickable(parent_div)
-                                    )
-                                    self.driver.execute_script("arguments[0].click();", parent_div)
-                                    logging.info(f"✅ Opción '{self.nombre}' seleccionada usando texto visible.")
-                                    option_found = True
-                                    break
-                            except Exception as e:
-                                logging.warning(f"⚠️ Error al procesar una opción o no cliqueable (búsqueda por texto): {e}")
-                                continue
+                                    logging.info(f"   Fallback: Comparando opción extraída: '{option_text_normalized}' con '{target_name_normalized_for_text}'")
+                                    
+                                    if option_text_normalized == target_name_normalized_for_text:
+                                        # Asegurarse de que el elemento padre (div[role="option"]) es cliqueable
+                                        parent_div = option_span.find_element(By.XPATH, './ancestor::div[@role="option"][1]')
+                                        WebDriverWait(self.driver, 5).until(
+                                            EC.visibility_of(parent_div)
+                                        )
+                                        WebDriverWait(self.driver, 5).until(
+                                            EC.element_to_be_clickable(parent_div)
+                                        )
+                                        self.driver.execute_script("arguments[0].click();", parent_div)
+                                        logging.info(f"✅ Fallback: Opción '{self.nombre}' seleccionada usando texto visible.")
+                                        option_found = True
+                                        break
+                                except Exception as e:
+                                    logging.warning(f"⚠️ Fallback: Error al procesar una opción o no cliqueable (búsqueda por texto): {e}")
+                                    continue
                     
                     if not option_found:
                         logging.error(f"❌ No se encontró la opción '{self.nombre}' en el dropdown después de revisar todas las posibles opciones.")
@@ -403,8 +417,6 @@ class GitHubFormAutomator:
             logging.info("👆 Haciendo click en 'Enviar'...")
             self.driver.execute_script("arguments[0].click();", submit_button)
             time.sleep(5)  # Esperar confirmación
-            
-            self.take_screenshot("07_submitted")
             
             # Verificar envío exitoso
             try:
