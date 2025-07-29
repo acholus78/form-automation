@@ -238,47 +238,46 @@ class GitHubFormAutomator:
                 try:
                     # Abrir dropdown
                     self.driver.execute_script("arguments[0].click();", dropdown)
-                    time.sleep(2)
+                    time.sleep(2) # Esperar a que las opciones se rendericen
                     
                     self.take_screenshot("04_dropdown_opened")
                     
-                    # Buscar opción con el nombre
-                    # MODIFICACIÓN: Añadir estrategias más robustas para Google Forms
-                    option_strategies = [
-                        # Intenta encontrar un div con rol 'option' que contenga el texto (normalizado)
-                        (By.XPATH, f'//div[@role="option"][contains(normalize-space(.), "{self.nombre}")]'),
-                        # Intenta encontrar un span dentro de un div con rol 'option'
-                        (By.XPATH, f'//div[@role="option"]//span[normalize-space(text())="{self.nombre}"]'),
-                        # Estrategias originales (mantener como fallback)
-                        (By.XPATH, f'//span[contains(text(), "{self.nombre}")]'),
-                        (By.XPATH, f'//div[contains(text(), "{self.nombre}")]'),
-                        (By.XPATH, f'//*[text()="{self.nombre}"]'),
-                        (By.XPATH, f'//*[contains(text(), "{self.nombre}")]'),
-                    ]
-                    
+                    # MODIFICACIÓN: Buscar opción de forma más robusta
                     option_found = False
-                    for i, (by, selector) in enumerate(option_strategies, 1):
+                    # Buscar todos los elementos que podrían ser opciones (div con role="option" es común en GForms)
+                    # También buscar span dentro de esos divs, o divs con texto directo
+                    possible_options = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_all_elements_located((By.XPATH, '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]'))
+                    )
+                    
+                    logging.info(f"🔍 Encontradas {len(possible_options)} posibles opciones en el dropdown.")
+
+                    for option in possible_options:
                         try:
-                            logging.info(f"🔍 Buscando opción estrategia {i}: {self.nombre}")
-                            # Usar element_to_be_clickable para asegurar que el elemento está listo para la interacción
-                            option = WebDriverWait(self.driver, 5).until(
-                                EC.element_to_be_clickable((by, selector))
-                            )
-                            self.driver.execute_script("arguments[0].click();", option)
-                            logging.info(f"✅ Opción '{self.nombre}' seleccionada")
-                            option_found = True
-                            break
-                        except:
-                            logging.info(f"❌ Estrategia opción {i} falló")
+                            # Obtener el texto visible del elemento, limpiando espacios
+                            option_text = option.text.strip()
+                            logging.info(f"   Comparando opción: '{option_text}' con '{self.nombre}'")
+                            if option_text == self.nombre:
+                                # Asegurarse de que el elemento es cliqueable antes de hacer clic
+                                WebDriverWait(self.driver, 5).until(
+                                    EC.element_to_be_clickable(option)
+                                )
+                                self.driver.execute_script("arguments[0].click();", option)
+                                logging.info(f"✅ Opción '{self.nombre}' seleccionada")
+                                option_found = True
+                                break
+                        except Exception as e:
+                            logging.warning(f"⚠️ Error al procesar una opción o no cliqueable: {e}")
                             continue
                     
                     if not option_found:
-                        logging.error(f"❌ No se encontró la opción '{self.nombre}' en el dropdown")
+                        logging.error(f"❌ No se encontró la opción '{self.nombre}' en el dropdown después de revisar todas las posibles opciones.")
                         self.take_screenshot("error_option_not_found")
                         return False
                         
                 except Exception as e:
                     logging.error(f"❌ Error al manejar dropdown personalizado: {e}")
+                    self.take_screenshot("error_dropdown_handling")
                     return False
             
             time.sleep(2)
@@ -394,7 +393,7 @@ class GitHubFormAutomator:
                 success = any(indicator in page_text for indicator in success_indicators)
                 
                 if success:
-                    logging.info("� ¡FORMULARIO ENVIADO EXITOSAMENTE!")
+                    logging.info("🎉 ¡FORMULARIO ENVIADO EXITOSAMENTE!")
                     return True
                 else:
                     logging.warning("⚠️ No se detectó mensaje de confirmación, pero el envío puede haber sido exitoso")
