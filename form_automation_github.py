@@ -244,56 +244,60 @@ class GitHubFormAutomator:
                     self.take_screenshot("04_dropdown_opened")
                     
                     option_found = False
-                    # MODIFICACIÓN CLAVE: Buscar específicamente los divs con role="option" que contienen el texto.
-                    # Se usa normalize-space() para limpiar espacios y tocasen() para hacer la comparación insensible a mayúsculas/minúsculas.
-                    # También se busca el span anidado que es donde suele estar el texto real.
-                    target_name_normalized = self.nombre.strip().lower() # Normalizar el nombre a buscar
+                    # Normalizar el nombre a buscar para comparación insensible a mayúsculas/minúsculas y espacios
+                    target_name_normalized = self.nombre.strip().lower() 
                     
-                    # Esperar a que al menos una opción visible esté presente
-                    WebDriverWait(self.driver, 10).until(
-                        EC.visibility_of_element_located((By.XPATH, '//div[@role="option"]'))
-                    )
-                    
-                    # Obtener todas las opciones potenciales del dropdown
-                    # Incluimos la clase específica de Google Forms para mayor precisión
-                    possible_options = self.driver.find_elements(By.XPATH, 
-                        '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]'
-                    )
-                    
-                    logging.info(f"🔍 Encontradas {len(possible_options)} posibles opciones en el dropdown.")
+                    # MODIFICACIÓN CLAVE: Buscar directamente la opción por su atributo data-value
+                    # Esto es lo más fiable para Google Forms
+                    try:
+                        # Esperar a que la opción específica por data-value sea visible y cliqueable
+                        option_element = WebDriverWait(self.driver, 10).until(
+                            EC.element_to_be_clickable((By.XPATH, f'//div[@role="option" and @data-value="{self.nombre}"]'))
+                        )
+                        self.driver.execute_script("arguments[0].click();", option_element)
+                        logging.info(f"✅ Opción '{self.nombre}' seleccionada usando data-value.")
+                        option_found = True
+                    except Exception as e:
+                        logging.info(f"❌ No se encontró la opción por data-value, intentando por texto visible: {e}")
+                        # Fallback a la búsqueda por texto visible si data-value falla
+                        # Esperar a que al menos una opción visible esté presente
+                        WebDriverWait(self.driver, 10).until(
+                            EC.visibility_of_element_located((By.XPATH, '//div[@role="option"]'))
+                        )
+                        
+                        possible_options = self.driver.find_elements(By.XPATH, 
+                            '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]'
+                        )
+                        
+                        logging.info(f"🔍 Encontradas {len(possible_options)} posibles opciones en el dropdown para búsqueda por texto.")
 
-                    for option in possible_options:
-                        try:
-                            # Intentar obtener el texto visible de la opción de la manera más robusta
-                            option_text = ""
-                            # Priorizar el texto del span anidado, que es lo más común en Google Forms
+                        for option in possible_options:
                             try:
-                                nested_span = option.find_element(By.TAG_NAME, 'span')
-                                option_text = nested_span.text.strip()
-                            except:
-                                # Si no hay span anidado, intentar con el texto directo del elemento
-                                option_text = option.text.strip()
-                            
-                            # Normalizar el texto de la opción para la comparación
-                            option_text_normalized = option_text.lower()
+                                option_text = ""
+                                try:
+                                    nested_span = option.find_element(By.TAG_NAME, 'span')
+                                    option_text = nested_span.text.strip()
+                                except:
+                                    option_text = option.text.strip()
+                                
+                                option_text_normalized = option_text.lower()
 
-                            logging.info(f"   Comparando opción extraída: '{option_text_normalized}' con '{target_name_normalized}'")
-                            
-                            if option_text_normalized == target_name_normalized:
-                                # Asegurarse de que el elemento es visible y cliqueable antes de hacer clic
-                                WebDriverWait(self.driver, 5).until(
-                                    EC.visibility_of(option)
-                                )
-                                WebDriverWait(self.driver, 5).until(
-                                    EC.element_to_be_clickable(option)
-                                )
-                                self.driver.execute_script("arguments[0].click();", option)
-                                logging.info(f"✅ Opción '{self.nombre}' seleccionada")
-                                option_found = True
-                                break
-                        except Exception as e:
-                            logging.warning(f"⚠️ Error al procesar una opción o no cliqueable: {e}")
-                            continue
+                                logging.info(f"   Comparando opción extraída: '{option_text_normalized}' con '{target_name_normalized}'")
+                                
+                                if option_text_normalized == target_name_normalized:
+                                    WebDriverWait(self.driver, 5).until(
+                                        EC.visibility_of(option)
+                                    )
+                                    WebDriverWait(self.driver, 5).until(
+                                        EC.element_to_be_clickable(option)
+                                    )
+                                    self.driver.execute_script("arguments[0].click();", option)
+                                    logging.info(f"✅ Opción '{self.nombre}' seleccionada usando texto visible.")
+                                    option_found = True
+                                    break
+                            except Exception as e:
+                                logging.warning(f"⚠️ Error al procesar una opción o no cliqueable (búsqueda por texto): {e}")
+                                continue
                     
                     if not option_found:
                         logging.error(f"❌ No se encontró la opción '{self.nombre}' en el dropdown después de revisar todas las posibles opciones.")
