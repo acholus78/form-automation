@@ -243,7 +243,13 @@ class GitHubFormAutomator:
                     self.take_screenshot("04_dropdown_opened")
                     
                     # Buscar opción con el nombre
+                    # MODIFICACIÓN: Añadir estrategias más robustas para Google Forms
                     option_strategies = [
+                        # Intenta encontrar un div con rol 'option' que contenga el texto (normalizado)
+                        (By.XPATH, f'//div[@role="option"][contains(normalize-space(.), "{self.nombre}")]'),
+                        # Intenta encontrar un span dentro de un div con rol 'option'
+                        (By.XPATH, f'//div[@role="option"]//span[normalize-space(text())="{self.nombre}"]'),
+                        # Estrategias originales (mantener como fallback)
                         (By.XPATH, f'//span[contains(text(), "{self.nombre}")]'),
                         (By.XPATH, f'//div[contains(text(), "{self.nombre}")]'),
                         (By.XPATH, f'//*[text()="{self.nombre}"]'),
@@ -254,6 +260,7 @@ class GitHubFormAutomator:
                     for i, (by, selector) in enumerate(option_strategies, 1):
                         try:
                             logging.info(f"🔍 Buscando opción estrategia {i}: {self.nombre}")
+                            # Usar element_to_be_clickable para asegurar que el elemento está listo para la interacción
                             option = WebDriverWait(self.driver, 5).until(
                                 EC.element_to_be_clickable((by, selector))
                             )
@@ -387,7 +394,7 @@ class GitHubFormAutomator:
                 success = any(indicator in page_text for indicator in success_indicators)
                 
                 if success:
-                    logging.info("🎉 ¡FORMULARIO ENVIADO EXITOSAMENTE!")
+                    logging.info("� ¡FORMULARIO ENVIADO EXITOSAMENTE!")
                     return True
                 else:
                     logging.warning("⚠️ No se detectó mensaje de confirmación, pero el envío puede haber sido exitoso")
