@@ -204,7 +204,7 @@ class GitHubFormAutomator:
                 (By.XPATH, '//div[contains(@class, "dropdown") or contains(@class, "select")]'),
             ]
             
-            for i, (by, selector) in enumerate(dropdown_strategies, 1):
+            for i, (by, selector) :
                 try:
                     logging.info(f"🔍 Estrategia dropdown {i}: {selector}")
                     dropdown = WebDriverWait(self.driver, 8).until(
@@ -244,54 +244,54 @@ class GitHubFormAutomator:
                     self.take_screenshot("04_dropdown_opened")
                     
                     option_found = False
-                    # Normalizar el nombre a buscar para comparación insensible a mayúsculas/minúsculas y espacios
-                    target_name_normalized = self.nombre.strip().lower() 
+                    # Normalizar el nombre a buscar para comparación (solo para fallback de texto)
+                    target_name_normalized_for_text = self.nombre.strip().lower() 
                     
                     # MODIFICACIÓN CLAVE: Buscar directamente la opción por su atributo data-value
-                    # Esto es lo más fiable para Google Forms
+                    # Esto es lo más fiable para Google Forms. Usamos self.nombre.strip() para asegurar
+                    # que no haya espacios extra que impidan la coincidencia.
                     try:
-                        # Esperar a que la opción específica por data-value sea visible y cliqueable
+                        logging.info(f"🔍 Intentando seleccionar por data-value: '{self.nombre.strip()}'")
                         option_element = WebDriverWait(self.driver, 10).until(
-                            EC.element_to_be_clickable((By.XPATH, f'//div[@role="option" and @data-value="{self.nombre}"]'))
+                            EC.element_to_be_clickable((By.XPATH, f'//div[@role="option" and @data-value="{self.nombre.strip()}"]'))
                         )
                         self.driver.execute_script("arguments[0].click();", option_element)
                         logging.info(f"✅ Opción '{self.nombre}' seleccionada usando data-value.")
                         option_found = True
                     except Exception as e:
-                        logging.info(f"❌ No se encontró la opción por data-value, intentando por texto visible: {e}")
+                        logging.info(f"❌ No se encontró la opción por data-value ('{self.nombre.strip()}'), intentando por texto visible. Error: {e}")
+                        
                         # Fallback a la búsqueda por texto visible si data-value falla
                         # Esperar a que al menos una opción visible esté presente
                         WebDriverWait(self.driver, 10).until(
                             EC.visibility_of_element_located((By.XPATH, '//div[@role="option"]'))
                         )
                         
-                        possible_options = self.driver.find_elements(By.XPATH, 
-                            '//div[@role="option"] | //div[@role="option"]//span | //div[contains(@class, "quantumWizMenuPaperselectOption")]'
+                        # MODIFICACIÓN: Buscar específicamente los spans dentro de los divs con role="option"
+                        # que son los que contienen el texto visible.
+                        possible_options_spans = self.driver.find_elements(By.XPATH, 
+                            '//div[@role="option"]//span'
                         )
                         
-                        logging.info(f"🔍 Encontradas {len(possible_options)} posibles opciones en el dropdown para búsqueda por texto.")
+                        logging.info(f"🔍 Encontradas {len(possible_options_spans)} posibles spans de opciones para búsqueda por texto.")
 
-                        for option in possible_options:
+                        for option_span in possible_options_spans:
                             try:
-                                option_text = ""
-                                try:
-                                    nested_span = option.find_element(By.TAG_NAME, 'span')
-                                    option_text = nested_span.text.strip()
-                                except:
-                                    option_text = option.text.strip()
-                                
+                                option_text = option_span.text.strip()
                                 option_text_normalized = option_text.lower()
 
-                                logging.info(f"   Comparando opción extraída: '{option_text_normalized}' con '{target_name_normalized}'")
+                                logging.info(f"   Comparando opción extraída: '{option_text_normalized}' con '{target_name_normalized_for_text}'")
                                 
-                                if option_text_normalized == target_name_normalized:
+                                if option_text_normalized == target_name_normalized_for_text:
+                                    # Asegurarse de que el elemento padre (div[role="option"]) es cliqueable
+                                    parent_div = option_span.find_element(By.XPATH, './ancestor::div[@role="option"][1]')
                                     WebDriverWait(self.driver, 5).until(
-                                        EC.visibility_of(option)
+                                        EC.visibility_of(parent_div)
                                     )
                                     WebDriverWait(self.driver, 5).until(
-                                        EC.element_to_be_clickable(option)
+                                        EC.element_to_be_clickable(parent_div)
                                     )
-                                    self.driver.execute_script("arguments[0].click();", option)
+                                    self.driver.execute_script("arguments[0].click();", parent_div)
                                     logging.info(f"✅ Opción '{self.nombre}' seleccionada usando texto visible.")
                                     option_found = True
                                     break
@@ -422,7 +422,7 @@ class GitHubFormAutomator:
                 success = any(indicator in page_text for indicator in success_indicators)
                 
                 if success:
-                    logging.info("🎉 ¡FORMULARIO ENVIADO EXITOSAMENTE!")
+                    logging.info("� ¡FORMULARIO ENVIADO EXITOSAMENTE!")
                     return True
                 else:
                     logging.warning("⚠️ No se detectó mensaje de confirmación, pero el envío puede haber sido exitoso")
