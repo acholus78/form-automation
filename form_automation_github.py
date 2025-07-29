@@ -204,7 +204,7 @@ class GitHubFormAutomator:
                 (By.XPATH, '//div[contains(@class, "dropdown") or contains(@class, "select")]'),
             ]
             
-            for i, (by, selector) :
+            for i, (by, selector) in enumerate(dropdown_strategies, 1): # CORRECCIÓN: Añadido 'in enumerate(dropdown_strategies, 1)'
                 try:
                     logging.info(f"🔍 Estrategia dropdown {i}: {selector}")
                     dropdown = WebDriverWait(self.driver, 8).until(
@@ -422,7 +422,7 @@ class GitHubFormAutomator:
                 success = any(indicator in page_text for indicator in success_indicators)
                 
                 if success:
-                    logging.info("� ¡FORMULARIO ENVIADO EXITOSAMENTE!")
+                    logging.info("🎉 ¡FORMULARIO ENVIADO EXITOSAMENTE!")
                     return True
                 else:
                     logging.warning("⚠️ No se detectó mensaje de confirmación, pero el envío puede haber sido exitoso")
